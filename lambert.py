@@ -176,10 +176,14 @@ def build_mission_dataframe(cluster):
     Construit la matrice de mission par optimisation GLOBALE (Évolution Différentielle).
     Borne supérieure du temps d'attente = période synodique (physiquement motivé).
     Utilise Tsiolkovski séquentiel pour le carburant.
-    Retourne un DataFrame ET un dict des paramètres optimaux par paire.
+    Retourne un DataFrame (matrice d'adjacence) ET un dict des paramètres optimaux par paire.
     """
     n = len(cluster)
-    records  = []
+    debris_names = [f"D{deb['id']}" for deb in cluster]
+    df_mission = pd.DataFrame(index=debris_names, columns=debris_names, dtype=object)
+    for name in debris_names:
+        df_mission.at[name, name] = "-"
+        
     opt_params = {}   # (start, target) -> (t_w, t_t)
 
     for start, target in itertools.permutations(range(n), 2):
@@ -223,17 +227,19 @@ def build_mission_dataframe(cluster):
         fuel, _ = tsiolkovsky_sequential(dv1, dv2)
 
         opt_params[(start, target)] = (t_w_opt, t_t_opt)
-        records.append({
-            'Départ':         f"Débris {deb_s['id']}",
-            'Cible':          f"Débris {deb_t['id']}",
-            'ΔV 1 (m/s)':    round(dv1 * 1000, 2),
-            'ΔV 2 (m/s)':    round(dv2 * 1000, 2),
-            'T_wait (h)':     round(t_w_opt / 3600, 2),
-            'T_vol (h)':      round(t_t_opt / 3600, 2),
-            'Fuel Total (kg)': round(fuel, 3)
-        })
+        
+        info_tuple = (
+            round(dv1 * 1000, 2),
+            round(dv2 * 1000, 2),
+            round(t_w_opt / 3600, 2),
+            round(t_t_opt / 3600, 2),
+            round(fuel, 3)
+        )
+        df_mission.at[f"D{deb_s['id']}", f"D{deb_t['id']}"] = info_tuple
 
-    return pd.DataFrame(records), opt_params
+    df_mission.fillna("X", inplace=True)
+
+    return df_mission, opt_params
 
 
 # ==========================================
@@ -250,11 +256,12 @@ def plot_mission(num_debris=4, target_debris_index=1):
     print("\nOptimisation de la matrice de mission (Évolution Différentielle)…")
     df_mission, opt_params = build_mission_dataframe(my_cluster)
 
-    print("\n" + "=" * 70)
-    print("  TABLEAU DE BORD DE LA MISSION")
-    print("=" * 70)
-    print(df_mission.to_string(index=False))
-    print("=" * 70 + "\n")
+    print("\n" + "=" * 100)
+    print("  MATRICE DE MISSION (Adjacence)")
+    print("  Cellule : (ΔV1 [m/s], ΔV2 [m/s], T_w [h], T_vol [h], Fuel [kg])")
+    print("=" * 100)
+    print(df_mission.to_string())
+    print("=" * 100 + "\n")
 
     # ── Paramètres du transfert visualisé (Chaser → cible) ──────────────
     chaser = my_cluster[0]
